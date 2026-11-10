@@ -6,12 +6,18 @@ import { detectNonStandaloneHtml, extractHtmlMetadata } from '../lib/htmlMeta';
 
 export interface PendingUploadItem {
   fileName: string;
+  sizeBytes?: number;
   html: string;
   title: string;
   description: string;
   tags: string[];
   level: CefrLevel;
   accent: ToolAccent;
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
 interface UploadModalProps {
@@ -47,6 +53,7 @@ export function UploadModal({
   const [accent, setAccent] = useState<ToolAccent>('indigo');
   const [password, setPassword] = useState('');
   const [passwordHint, setPasswordHint] = useState('');
+  const [readingFiles, setReadingFiles] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -54,38 +61,52 @@ export function UploadModal({
   const [descTouched, setDescTouched] = useState(false);
   const [tagsTouched, setTagsTouched] = useState(false);
   const [nonStandaloneWarn, setNonStandaloneWarn] = useState(false);
+  const [largeFileWarn, setLargeFileWarn] = useState(false);
 
   const loadFiles = async (fileList: File[]) => {
     const htmlFiles = fileList.filter((f) => /\.html?$/i.test(f.name) || f.type === 'text/html');
     if (htmlFiles.length === 0) return;
 
-    const loaded: PendingUploadItem[] = [];
-    let hasWarn = false;
-    for (const f of htmlFiles) {
-      const html = await f.text();
-      if (detectNonStandaloneHtml(html)) hasWarn = true;
-      const meta = extractHtmlMetadata(html, f.name);
-      loaded.push({
-        fileName: f.name,
-        html,
-        title: meta.title,
-        description: meta.description,
-        tags: meta.suggestedTags,
-        level: meta.suggestedLevel,
-        accent: meta.suggestedAccent,
-      });
-    }
-    setNonStandaloneWarn(hasWarn);
-    setItems(loaded);
-    if (loaded.length === 1) {
-      setTitle(loaded[0].title);
-      setDescription(loaded[0].description);
-      setTags(loaded[0].tags);
-      setLevel(loaded[0].level);
-      setAccent(loaded[0].accent);
-    } else {
-      const mergedTags = Array.from(new Set(loaded.flatMap((l) => l.tags)));
-      setTags(mergedTags);
+    setError('');
+    setReadingFiles(true);
+    try {
+      await new Promise((resolve) => requestAnimationFrame(() => resolve(undefined)));
+      const loaded: PendingUploadItem[] = [];
+      let hasWarn = false;
+      let hasLarge = false;
+      for (const f of htmlFiles) {
+        const html = await f.text();
+        if (f.size > 15 * 1024 * 1024) hasLarge = true;
+        if (detectNonStandaloneHtml(html)) hasWarn = true;
+        const meta = extractHtmlMetadata(html, f.name);
+        loaded.push({
+          fileName: f.name,
+          sizeBytes: f.size,
+          html,
+          title: meta.title,
+          description: meta.description,
+          tags: meta.suggestedTags,
+          level: meta.suggestedLevel,
+          accent: meta.suggestedAccent,
+        });
+      }
+      setNonStandaloneWarn(hasWarn);
+      setLargeFileWarn(hasLarge);
+      setItems(loaded);
+      if (loaded.length === 1) {
+        setTitle(loaded[0].title);
+        setDescription(loaded[0].description);
+        setTags(loaded[0].tags);
+        setLevel(loaded[0].level);
+        setAccent(loaded[0].accent);
+      } else {
+        const mergedTags = Array.from(new Set(loaded.flatMap((l) => l.tags)));
+        setTags(mergedTags);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to read file');
+    } finally {
+      setReadingFiles(false);
     }
   };
 
@@ -236,6 +257,10 @@ export function UploadModal({
                 />
               </label>
 
+              {readingFiles && (
+                <div className="mt-3 text-xs font-semibold text-indigo-600">{t.readingFilesLabel}</div>
+              )}
+
               {items.length > 0 && (
                 <div className="mt-3 space-y-1.5">
                   <div className="text-xs font-bold text-indigo-700">{t.filesSelected(items.length)}</div>
@@ -247,6 +272,11 @@ export function UploadModal({
                       >
                         <FileCode2 className="h-3.5 w-3.5 text-indigo-500" />
                         {it.fileName}
+                        {it.sizeBytes !== undefined && (
+                          <span className="text-[11px] text-slate-400">
+                            ({formatFileSize(it.sizeBytes)})
+                          </span>
+                        )}
                       </span>
                     ))}
                   </div>
@@ -267,6 +297,13 @@ export function UploadModal({
             <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-950">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <span>{t.nonStandaloneWarning}</span>
+            </div>
+          )}
+
+          {largeFileWarn && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-sky-200 bg-sky-50 p-3.5 text-xs leading-relaxed text-sky-950">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
+              <span>{t.largeFileNotice}</span>
             </div>
           )}
 

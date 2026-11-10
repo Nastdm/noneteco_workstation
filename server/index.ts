@@ -14,7 +14,8 @@ async function main() {
   await store.init();
 
   const app = express();
-  app.use(express.json({ limit: '15mb' }));
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.text({ type: 'text/html', limit: '100mb' }));
 
   const asyncHandler = (
     fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
@@ -52,6 +53,24 @@ async function main() {
     '/api/tools',
     asyncHandler(async (req, res) => {
       const record = await store.createTool(req.body);
+      res.status(201).json(record);
+    }),
+  );
+
+  app.post(
+    '/api/tools/raw',
+    asyncHandler(async (req, res) => {
+      const metaHeader = req.headers['x-tool-meta'];
+      if (typeof metaHeader !== 'string' || !metaHeader) {
+        throw new StoreError(400, 'Missing X-Tool-Meta header');
+      }
+      const metaJson = Buffer.from(metaHeader, 'base64').toString('utf8');
+      const meta = JSON.parse(metaJson) as Record<string, unknown>;
+      const html = typeof req.body === 'string' ? req.body : '';
+      const record = await store.createTool({
+        ...(meta as Omit<Parameters<typeof store.createTool>[0], 'html'>),
+        html,
+      });
       res.status(201).json(record);
     }),
   );
@@ -195,6 +214,11 @@ async function main() {
       res.status(err.status).json({ error: err.message });
       return;
     }
+    const maybeErr = err as { type?: string; status?: number; message?: string };
+    if (maybeErr?.type === 'entity.too.large' || maybeErr?.status === 413) {
+      res.status(413).json({ error: 'File is too large (limit 100 MB)' });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   });
@@ -215,6 +239,9 @@ async function main() {
         host: '0.0.0.0',
         allowedHosts: true,
         hmr: { server },
+        watch: {
+          ignored: ['**/library/**', '**/dist/**'],
+        },
       },
       appType: 'spa',
     });

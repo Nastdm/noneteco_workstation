@@ -67,6 +67,8 @@ function playChime() {
   }
 }
 
+const LARGE_HTML_THRESHOLD = 400_000;
+
 export function ToolWorkspace({
   lang,
   tool,
@@ -84,7 +86,7 @@ export function ToolWorkspace({
 }: ToolWorkspaceProps) {
   const t = getTranslations(lang);
   const [liveHtml, setLiveHtml] = useState(html);
-  const [codeDraft, setCodeDraft] = useState(html);
+  const [codeDraft, setCodeDraft] = useState(() => (html.length <= LARGE_HTML_THRESHOLD ? html : ''));
   const [iframeKey, setIframeKey] = useState(0);
   const [viewport, setViewport] = useState<ViewportMode>('desktop');
   const [zenMode, setZenMode] = useState(false);
@@ -105,7 +107,7 @@ export function ToolWorkspace({
 
   useEffect(() => {
     setLiveHtml(html);
-    setCodeDraft(html);
+    setCodeDraft(html.length <= LARGE_HTML_THRESHOLD ? html : '');
     setNotes(tool.notes || '');
     lastSavedNotesRef.current = tool.notes || '';
     setNotesStatus('idle');
@@ -161,11 +163,27 @@ export function ToolWorkspace({
   }, [timerRunning]);
 
   const nonStandaloneKind = useMemo(() => detectNonStandaloneHtml(liveHtml), [liveHtml]);
+  const isTooLargeForCodeEditor = liveHtml.length > LARGE_HTML_THRESHOLD;
 
-  const preparedSrcDoc = useMemo(() => {
+  const preparedHtml = useMemo(() => {
     const saved = getToolSandboxStorage(tool.id);
     return prepareToolHtmlForIframe(liveHtml, tool.id, saved);
   }, [liveHtml, tool.id, iframeKey]);
+
+  const useBlobIframe = preparedHtml.length > LARGE_HTML_THRESHOLD;
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!useBlobIframe) {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([preparedHtml], { type: 'text/html;charset=utf-8' }));
+    setBlobUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [preparedHtml, useBlobIframe]);
 
   const relatedTools = useMemo(() => {
     if (tool.tags.length === 0) return [];
@@ -445,7 +463,8 @@ export function ToolWorkspace({
           <iframe
             key={`${tool.id}-${iframeKey}`}
             title={tool.title}
-            srcDoc={preparedSrcDoc}
+            src={useBlobIframe ? blobUrl || undefined : undefined}
+            srcDoc={useBlobIframe ? undefined : preparedHtml}
             sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
             allow="autoplay"
             className={`h-full bg-white ${iframeWidthClass}`}
@@ -567,33 +586,49 @@ export function ToolWorkspace({
 
             {sideTab === 'code' && (
               <div className="flex flex-1 flex-col p-4">
-                <textarea
-                  value={codeDraft}
-                  onChange={(e) => setCodeDraft(e.target.value)}
-                  spellCheck={false}
-                  className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-950 p-3 font-mono text-xs leading-relaxed text-emerald-300 outline-none focus:border-indigo-500"
-                />
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLiveHtml(codeDraft);
-                      setIframeKey((k) => k + 1);
-                    }}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    {t.applyPreviewBtn}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={savingCode}
-                    onClick={handleSaveCode}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {codeSavedToast ? <Check className="h-3.5 w-3.5" /> : null}
-                    {codeSavedToast ? t.codeSavedToast : t.saveCodeChangesBtn}
-                  </button>
-                </div>
+                {isTooLargeForCodeEditor ? (
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-[#E6E2DA] bg-[#FAF8F5] p-5 text-center">
+                    <p className="text-xs leading-relaxed text-slate-600">{t.codeTooLargeHint}</p>
+                    <button
+                      type="button"
+                      onClick={handleDownloadHtml}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-600"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {t.downloadHtmlBtn}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={codeDraft}
+                      onChange={(e) => setCodeDraft(e.target.value)}
+                      spellCheck={false}
+                      className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-950 p-3 font-mono text-xs leading-relaxed text-emerald-300 outline-none focus:border-indigo-500"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLiveHtml(codeDraft);
+                          setIframeKey((k) => k + 1);
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        {t.applyPreviewBtn}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingCode}
+                        onClick={handleSaveCode}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {codeSavedToast ? <Check className="h-3.5 w-3.5" /> : null}
+                        {codeSavedToast ? t.codeSavedToast : t.saveCodeChangesBtn}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </aside>

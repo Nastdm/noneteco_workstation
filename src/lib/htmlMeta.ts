@@ -105,6 +105,7 @@ export function pickAccentForString(seed: string): ToolAccent {
 }
 
 export function detectNonStandaloneHtml(html: string): 'vite_entry' | 'external_assets' | null {
+  if (html.length > 50000) return null;
   const hasEmptyRoot = /<div\s+id=["'](?:root|app)["'][^>]*>\s*<\/div>/i.test(html);
   const hasSrcModule = /<script[^>]+src=["']\/?src\/[^"']+\.(?:tsx?|jsx?|mjs|js)["'][^>]*>/i.test(html);
   if (hasEmptyRoot && hasSrcModule) return 'vite_entry';
@@ -118,11 +119,18 @@ export function detectNonStandaloneHtml(html: string): 'vite_entry' | 'external_
 }
 
 export function extractHtmlMetadata(html: string, fileName = 'untitled.html'): ExtractedHtmlMeta {
-  const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
-  const h1Match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
+  const headSlice = html.slice(0, 64000);
+  const bodyIdx = html.search(/<body[^>]*>/i);
+  const bodySlice =
+    bodyIdx >= 0 && bodyIdx < 5000000
+      ? html.slice(bodyIdx, bodyIdx + 64000)
+      : headSlice;
+
+  const titleMatch = headSlice.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const h1Match = bodySlice.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   const metaDescMatch =
-    html.match(/<meta[^>]*name=["']description["'][^>]*content=["']([\s\S]*?)["'][^>]*>/i) ||
-    html.match(/<meta[^>]*content=["']([\s\S]*?)["'][^>]*name=["']description["'][^>]*>/i);
+    headSlice.match(/<meta[^>]*name=["']description["'][^>]*content=["']([\s\S]*?)["'][^>]*>/i) ||
+    headSlice.match(/<meta[^>]*content=["']([\s\S]*?)["'][^>]*name=["']description["'][^>]*>/i);
 
   const cleanFileName = fileName.replace(/\.html?$/i, '').replace(/[-_]+/g, ' ').trim();
   const rawTitle =
@@ -133,7 +141,7 @@ export function extractHtmlMetadata(html: string, fileName = 'untitled.html'): E
   if (metaDescMatch?.[1]) {
     description = decodeHtmlEntities(metaDescMatch[1].replace(/\s+/g, ' ').trim()).slice(0, 240);
   } else {
-    const pMatch = html.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
+    const pMatch = bodySlice.match(/<p[^>]*>([\s\S]*?)<\/p>/i);
     if (pMatch?.[1]) {
       const stripped = decodeHtmlEntities(pMatch[1].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim());
       if (stripped.length > 10) {
@@ -142,8 +150,10 @@ export function extractHtmlMetadata(html: string, fileName = 'untitled.html'): E
     }
   }
 
-  const textSample = `${title} ${description} ${fileName} ${html
-    .slice(0, 30000)
+  const textSample = `${title} ${description} ${fileName} ${headSlice
+    .slice(0, 24000)
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')} ${bodySlice
+    .slice(0, 24000)
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')}`;
 
   const tags: string[] = [];
@@ -192,11 +202,16 @@ export function prepareToolHtmlForIframe(
 
   const bridgeScript = `<meta charset="UTF-8"><script>(function(){try{var id=${safeIdJson};var store=Object.assign({},${safeDataJson});var persist=function(){try{window.parent.postMessage({type:'noneteco-storage-update',toolId:id,data:Object.assign({},store)},'*')}catch(e){}};var createStorage=function(){return{getItem:function(k){k=String(k);return Object.prototype.hasOwnProperty.call(store,k)?store[k]:null},setItem:function(k,v){store[String(k)]=String(v);persist()},removeItem:function(k){delete store[String(k)];persist()},clear:function(){store={};persist()},key:function(i){var keys=Object.keys(store);return keys[i]===undefined?null:keys[i]},get length(){return Object.keys(store).length}}};var s=createStorage();try{Object.defineProperty(window,'localStorage',{configurable:true,get:function(){return s}})}catch(e){}try{var ss=createStorage();Object.defineProperty(window,'sessionStorage',{configurable:true,get:function(){return ss}})}catch(e){}}catch(e){}})();</script>`;
 
-  if (/<head[^>]*>/i.test(safeRaw)) {
-    return safeRaw.replace(/<head[^>]*>/i, (match) => `${match}\n${bridgeScript}`);
+  const probe = safeRaw.slice(0, 200000);
+  const headMatch = probe.match(/<head[^>]*>/i);
+  if (headMatch && headMatch.index !== undefined) {
+    const insertAt = headMatch.index + headMatch[0].length;
+    return `${safeRaw.slice(0, insertAt)}\n${bridgeScript}${safeRaw.slice(insertAt)}`;
   }
-  if (/<html[^>]*>/i.test(safeRaw)) {
-    return safeRaw.replace(/<html[^>]*>/i, (match) => `${match}\n<head>${bridgeScript}</head>`);
+  const htmlMatch = probe.match(/<html[^>]*>/i);
+  if (htmlMatch && htmlMatch.index !== undefined) {
+    const insertAt = htmlMatch.index + htmlMatch[0].length;
+    return `${safeRaw.slice(0, insertAt)}\n<head>${bridgeScript}</head>${safeRaw.slice(insertAt)}`;
   }
   return `<!DOCTYPE html><html><head>${bridgeScript}</head><body>${safeRaw}</body></html>`;
 }

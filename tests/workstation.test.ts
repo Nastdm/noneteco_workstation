@@ -179,4 +179,26 @@ test('Share URL compression/encryption and Portable Bundle HTML generation', asy
   const portableHtml = await generatePortableBundleHtml(bundle, toolsPayload, 'pass123');
   assert.ok(portableHtml.includes('<!DOCTYPE html>'));
   assert.ok(!portableHtml.includes('<h1>Hi!</h1>')); // encrypted inside portable HTML when bundle has password!
+
+  // Oversized payload skips heavy URL compression immediately
+  const bigRes = await buildShareUrl(bundle, [
+    { ...toolsPayload[0], html: 'x'.repeat(300_000) },
+  ]);
+  assert.equal(bigRes.tooLong, true);
+  assert.equal(bigRes.url, '');
+});
+
+test('Large HTML files (10MB+) process quickly without regex stalling', () => {
+  const bigBody = '<div>' + 'A'.repeat(10_000_000) + '</div>';
+  const bigHtml = `<!DOCTYPE html><html><head><title>Big Lesson Tool B2</title></head><body><h1>Lesson</h1>${bigBody}</body></html>`;
+
+  const t0 = performance.now();
+  assert.equal(detectNonStandaloneHtml(bigHtml), null);
+  const meta = extractHtmlMetadata(bigHtml, 'big-lesson.html');
+  assert.equal(meta.title, 'Big Lesson Tool B2');
+  assert.equal(meta.suggestedLevel, 'B2');
+  const bridged = prepareToolHtmlForIframe(bigHtml, 'big-lesson', {});
+  assert.ok(bridged.includes('noneteco-storage-update'));
+  const elapsed = performance.now() - t0;
+  assert.ok(elapsed < 500, `Expected <500ms, got ${elapsed}ms`);
 });

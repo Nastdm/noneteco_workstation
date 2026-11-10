@@ -68,6 +68,18 @@ export async function buildShareUrl(
   bundlePassword?: string,
   options?: { isSingleTool?: boolean },
 ): Promise<{ url: string; length: number; tooLong: boolean }> {
+  let rawEstimate = 0;
+  for (const tl of tools) {
+    rawEstimate += tl.html ? tl.html.length : tl.encrypted ? tl.encrypted.data.length : 0;
+  }
+  if (rawEstimate > 250_000) {
+    return {
+      url: '',
+      length: rawEstimate,
+      tooLong: true,
+    };
+  }
+
   const envelope = await createShareEnvelope(bundle, tools, bundlePassword, options);
   const jsonBytes = strToU8(JSON.stringify(envelope));
   const compressed = zlibSync(jsonBytes, { level: 9 });

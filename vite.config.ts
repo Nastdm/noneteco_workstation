@@ -8,6 +8,9 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     allowedHosts: true,
+    watch: {
+      ignored: ['**/library/**', '**/dist/**'],
+    },
   },
   build: {
     outDir: 'dist',

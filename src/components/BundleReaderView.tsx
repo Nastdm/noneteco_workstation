@@ -80,10 +80,25 @@ export function BundleReaderView({
   const activeHtml = activeTool ? unlockedHtmlMap[activeTool.id] ?? activeTool.html : undefined;
   const isLocked = Boolean(activeTool?.protected && !activeHtml);
 
-  const preparedSrcDoc = useMemo(() => {
+  const preparedHtml = useMemo(() => {
     if (!activeTool?.id || !activeHtml) return '';
     return prepareToolHtmlForIframe(activeHtml, activeTool.id, getToolSandboxStorage(activeTool.id));
   }, [activeTool?.id, activeHtml]);
+
+  const useBlobIframe = preparedHtml.length > 400_000;
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!useBlobIframe || !preparedHtml) {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([preparedHtml], { type: 'text/html;charset=utf-8' }));
+    setBlobUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [preparedHtml, useBlobIframe]);
 
   const singleToolMode = Boolean(data.bundle.isSingleTool || (data.tools.length === 1 && !data.bundle.welcomeNote));
 
@@ -242,7 +257,8 @@ export function BundleReaderView({
               <iframe
                 key={activeTool.id}
                 title={activeTool.title}
-                srcDoc={preparedSrcDoc}
+                src={useBlobIframe ? blobUrl || undefined : undefined}
+                srcDoc={useBlobIframe ? undefined : preparedHtml}
                 sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
                 allow="autoplay"
                 className="w-full flex-1 border-none bg-white"

@@ -240,6 +240,15 @@ export async function unlockTool(mode: RuntimeMode, tool: ToolRecord, password: 
   return decryptText(payload, password);
 }
 
+function toUtf8Base64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return btoa(bin);
+}
+
 export async function createTool(
   mode: RuntimeMode,
   input: {
@@ -255,6 +264,22 @@ export async function createTool(
   },
 ): Promise<ToolRecord> {
   if (mode === 'server') {
+    if (input.html.length > 1_000_000) {
+      const { html, ...meta } = input;
+      const res = await fetch(`${BASE}api/tools/raw`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Tool-Meta': toUtf8Base64(JSON.stringify(meta)),
+        },
+        body: html,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
+      }
+      return data as ToolRecord;
+    }
     return apiJson<ToolRecord>('api/tools', {
       method: 'POST',
       body: JSON.stringify(input),
