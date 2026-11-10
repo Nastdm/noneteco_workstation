@@ -1,0 +1,34 @@
+{
+  "name": "noneteco-workstation",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Noneteco Workstation — Interactive HTML tool library with tags, password locks, shareable bundles, and GitHub Pages sync for English tutors.",
+  "scripts": {
+    "dev": "tsx server/index.ts",
+    "build:library": "node scripts/build-library.mjs",
+    "build": "vite build && npm run build:library",
+    "build:pages": "VITE_BASE_PATH=/noneteco_workstation/ vite build && npm run build:library",
+    "start": "NODE_ENV=production tsx server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/workstation.test.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "fflate": "^0.8.2",
+    "lucide-react": "^0.511.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.4",
+    "@types/express": "^5.0.1",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.4.1",
+    "tailwindcss": "^4.1.4",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vite": "^6.3.3"
+  }
+}
