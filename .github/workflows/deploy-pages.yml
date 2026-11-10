@@ -33,6 +33,11 @@ jobs:
       - name: Build static site & library catalog
         run: npm run build:pages
 
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
