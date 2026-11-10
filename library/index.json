@@ -1,0 +1,88 @@
+{
+  "version": 1,
+  "tools": [
+    {
+      "id": "phrasal-verbs-match",
+      "title": "Phrasal Verbs Trainer (B1–B2)",
+      "description": "Interactive gap-fill trainer with English audio pronunciation and persistent streak score.",
+      "fileName": "phrasal-verbs-match.html",
+      "tags": [
+        "Vocabulary",
+        "B1",
+        "B2",
+        "Game",
+        "Self-Check"
+      ],
+      "level": "B1",
+      "accent": "indigo",
+      "protected": false,
+      "blobPath": "blobs/phrasal-verbs-match.html",
+      "sizeBytes": 8546,
+      "createdAt": "2026-11-10T13:28:48.085Z",
+      "updatedAt": "2026-11-10T13:28:48.085Z",
+      "notes": "Great for 10-minute lesson warm-ups. Ask student to read the full sentence aloud after clicking Listen."
+    },
+    {
+      "id": "speaking-wheel-warmups",
+      "title": "Speaking Prompt Spinner & 60s Challenge",
+      "description": "Animated topic wheel with 60-second timer and custom topic input for ESL conversation practice.",
+      "fileName": "speaking-wheel-warmups.html",
+      "tags": [
+        "Speaking",
+        "Warm-up",
+        "Game",
+        "Conversation"
+      ],
+      "level": "All",
+      "accent": "emerald",
+      "protected": false,
+      "blobPath": "blobs/speaking-wheel-warmups.html",
+      "sizeBytes": 7433,
+      "createdAt": "2026-11-10T13:28:48.085Z",
+      "updatedAt": "2026-11-10T13:28:48.085Z",
+      "notes": "Spin twice if the student wants to compare two topics."
+    },
+    {
+      "id": "past-perfect-answer-key",
+      "title": "Past Simple vs Past Perfect — Teacher Key & Quiz",
+      "description": "Diagnostic grammar quiz with locked Teacher Key explanations (sample password-protected file).",
+      "fileName": "past-perfect-answer-key.html",
+      "tags": [
+        "Grammar",
+        "B1",
+        "Quiz",
+        "Teacher Key"
+      ],
+      "level": "B1",
+      "accent": "amber",
+      "protected": true,
+      "passwordHint": "Demo password: noneteco",
+      "blobPath": "blobs/past-perfect-answer-key.enc.json",
+      "sizeBytes": 4292,
+      "createdAt": "2026-11-10T13:28:48.085Z",
+      "updatedAt": "2026-11-10T13:28:48.085Z",
+      "notes": "Demo protected file! Use password \"noneteco\" to unlock."
+    }
+  ],
+  "bundles": [
+    {
+      "id": "b1-lesson-starter-pack",
+      "title": "B1 Lesson Starter Pack",
+      "description": "Warm-up speaking spinner + Phrasal Verbs interactive trainer ready to share with students.",
+      "welcomeNote": "Hi! Complete the Phrasal Verbs trainer and practice 2 topics on the Speaking Wheel before our next lesson.",
+      "toolIds": [
+        "speaking-wheel-warmups",
+        "phrasal-verbs-match"
+      ],
+      "tags": [
+        "B1",
+        "Speaking",
+        "Vocabulary"
+      ],
+      "accent": "indigo",
+      "protected": false,
+      "createdAt": "2026-11-10T13:28:48.085Z",
+      "updatedAt": "2026-11-10T13:28:48.085Z"
+    }
+  ]
+}

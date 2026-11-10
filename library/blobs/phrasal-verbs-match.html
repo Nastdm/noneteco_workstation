@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Phrasal Verbs Trainer (B1–B2)</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: linear-gradient(135deg, #f6f8ff 0%, #eef2ff 100%);
+      color: #1e293b;
+      min-height: 100vh;
+      padding: 24px;
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+    }
+    .app {
+      width: 100%;
+      max-width: 760px;
+      background: #ffffff;
+      border-radius: 20px;
+      box-shadow: 0 12px 32px rgba(30, 41, 59, 0.08);
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+    .header {
+      padding: 20px 24px;
+      background: #312e81;
+      color: #fff;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .header h1 { margin: 0; font-size: 20px; font-weight: 700; }
+    .header p { margin: 4px 0 0; font-size: 13px; color: #c7d2fe; }
+    .stats { display: flex; gap: 10px; }
+    .pill {
+      background: rgba(255,255,255,0.16);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .content { padding: 24px; }
+    .card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 16px;
+      padding: 20px;
+      margin-bottom: 18px;
+    }
+    .sentence {
+      font-size: 20px;
+      line-height: 1.5;
+      font-weight: 600;
+      color: #0f172a;
+      margin: 0 0 12px;
+    }
+    .blank {
+      display: inline-block;
+      min-width: 110px;
+      border-bottom: 3px solid #4f46e5;
+      color: #4f46e5;
+      text-align: center;
+      padding: 0 8px;
+    }
+    .meaning { font-size: 14px; color: #475569; margin: 0; }
+    .options {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    button.opt {
+      padding: 14px 16px;
+      border-radius: 12px;
+      border: 2px solid #e2e8f0;
+      background: #fff;
+      font-size: 15px;
+      font-weight: 600;
+      color: #1e293b;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    button.opt:hover:not(:disabled) { border-color: #4f46e5; background: #eef2ff; }
+    button.opt.correct { border-color: #10b981; background: #d1fae5; color: #065f46; }
+    button.opt.wrong { border-color: #ef4444; background: #fee2e2; color: #991b1b; }
+    .actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .btn {
+      border: none;
+      border-radius: 10px;
+      padding: 10px 16px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-ghost { background: #eef2ff; color: #3730a3; }
+    .btn-ghost:hover { background: #e0e7ff; }
+    .feedback {
+      min-height: 24px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="header">
+      <div>
+        <h1>Phrasal Verbs Trainer (B1–B2)</h1>
+        <p>Choose the right phrasal verb, listen to pronunciation, and build your streak.</p>
+      </div>
+      <div class="stats">
+        <div class="pill">Score: <span id="score">0</span></div>
+        <div class="pill">Streak: <span id="streak">0</span></div>
+      </div>
+    </div>
+    <div class="content">
+      <div class="card">
+        <p class="sentence" id="sentence"></p>
+        <p class="meaning">Hint: <span id="hint"></span></p>
+      </div>
+      <div class="options" id="options"></div>
+      <div class="actions">
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost" id="speakBtn">Listen (EN)</button>
+          <button class="btn btn-ghost" id="resetBtn">Reset Stats</button>
+        </div>
+        <div class="feedback" id="feedback"></div>
+        <button class="btn btn-primary" id="nextBtn">Next Question →</button>
+      </div>
+    </div>
+  </div>
+  <script>
+    const ITEMS = [
+      { before: "I need to ", after: " a new hobby this autumn.", answer: "take up", hint: "start doing a new activity", choices: ["take up", "give away", "put off", "turn down"] },
+      { before: "Don't worry, we'll ", after: " a solution together.", answer: "work out", hint: "find an answer or solve a problem", choices: ["work out", "break down", "look after", "call off"] },
+      { before: "The meeting was ", after: " because the director was ill.", answer: "called off", hint: "cancelled", choices: ["called off", "looked up", "brought up", "run into"] },
+      { before: "I unexpectedly ", after: " my former classmate at the airport!", answer: "ran into", hint: "met by chance", choices: ["ran into", "gave up", "came across", "turned up"] },
+      { before: "Could you ", after: " the music a bit? I'm trying to concentrate.", answer: "turn down", hint: "reduce the volume", choices: ["turn down", "set off", "carry on", "take off"] },
+      { before: "She decided to ", after: " applying for the scholarship until Friday.", answer: "put off", hint: "postpone / delay", choices: ["put off", "get over", "look forward to", "make up"] },
+      { before: "It took him weeks to ", after: " the flu.", answer: "get over", hint: "recover from", choices: ["get over", "bring up", "figure out", "drop off"] },
+      { before: "Please ", after: " speaking — that's a really interesting point.", answer: "carry on", hint: "continue", choices: ["carry on", "break up", "turn off", "check out"] }
+    ];
+
+    let idx = 0;
+    let answered = false;
+    let score = Number(localStorage.getItem('pv_score') || 0);
+    let streak = Number(localStorage.getItem('pv_streak') || 0);
+
+    const scoreEl = document.getElementById('score');
+    const streakEl = document.getElementById('streak');
+    const sentenceEl = document.getElementById('sentence');
+    const hintEl = document.getElementById('hint');
+    const optionsEl = document.getElementById('options');
+    const feedbackEl = document.getElementById('feedback');
+
+    function saveStats() {
+      localStorage.setItem('pv_score', String(score));
+      localStorage.setItem('pv_streak', String(streak));
+      scoreEl.textContent = score;
+      streakEl.textContent = streak;
+    }
+
+    function shuffle(arr) {
+      return [...arr].sort(() => Math.random() - 0.5);
+    }
+
+    function render() {
+      answered = false;
+      const item = ITEMS[idx % ITEMS.length];
+      sentenceEl.innerHTML = `${item.before}<span class="blank" id="blank">______</span>${item.after}`;
+      hintEl.textContent = item.hint;
+      feedbackEl.textContent = '';
+      optionsEl.innerHTML = '';
+
+      shuffle(item.choices).forEach(choice => {
+        const btn = document.createElement('button');
+        btn.className = 'opt';
+        btn.textContent = choice;
+        btn.onclick = () => pick(btn, choice, item.answer);
+        optionsEl.appendChild(btn);
+      });
+      saveStats();
+    }
+
+    function pick(btn, choice, answer) {
+      if (answered) return;
+      answered = true;
+      document.getElementById('blank').textContent = answer;
+      const all = optionsEl.querySelectorAll('button.opt');
+      all.forEach(b => {
+        b.disabled = true;
+        if (b.textContent === answer) b.classList.add('correct');
+      });
+      if (choice === answer) {
+        score += 10;
+        streak += 1;
+        feedbackEl.style.color = '#059669';
+        feedbackEl.textContent = 'Great job! +10 pts';
+      } else {
+        btn.classList.add('wrong');
+        streak = 0;
+        feedbackEl.style.color = '#dc2626';
+        feedbackEl.textContent = `Almost! Correct answer: "${answer}"`;
+      }
+      saveStats();
+    }
+
+    document.getElementById('nextBtn').onclick = () => { idx++; render(); };
+    document.getElementById('resetBtn').onclick = () => { score = 0; streak = 0; saveStats(); };
+    document.getElementById('speakBtn').onclick = () => {
+      if (!('speechSynthesis' in window)) return;
+      const item = ITEMS[idx % ITEMS.length];
+      const text = `${item.before}${item.answer}${item.after}`;
+      window.speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'en-US';
+      u.rate = 0.95;
+      window.speechSynthesis.speak(u);
+    };
+
+    render();
+  </script>
+</body>
+</html>
