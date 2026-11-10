@@ -79,6 +79,7 @@ export interface SharePayloadPlain {
     accent: ToolAccent;
     tags: string[];
     createdAt: string;
+    isSingleTool?: boolean;
   };
   tools: SharePayloadTool[];
 }

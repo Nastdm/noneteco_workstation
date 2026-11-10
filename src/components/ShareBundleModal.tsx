@@ -10,7 +10,6 @@ interface ShareBundleModalProps {
   mode: RuntimeMode;
   bundle: BundleRecord;
   allTools: ToolRecord[];
-  hasLocalChanges: boolean;
   sessionBundlePassword?: string;
   onClose: () => void;
 }
@@ -20,7 +19,6 @@ export function ShareBundleModal({
   mode,
   bundle,
   allTools,
-  hasLocalChanges,
   sessionBundlePassword,
   onClose,
 }: ShareBundleModalProps) {
@@ -34,7 +32,10 @@ export function ShareBundleModal({
   const [error, setError] = useState('');
 
   const permanentUrl = `${window.location.origin}${window.location.pathname}?bundle=${encodeURIComponent(bundle.id)}`;
-  const isBrowserOnlyBundle = mode === 'static' && (bundle.source === 'local' || hasLocalChanges);
+  const hasLocalTool = bundle.toolIds.some(
+    (id) => allTools.find((tl) => tl.id === id)?.source === 'local',
+  );
+  const isBrowserOnlyBundle = mode === 'static' && (bundle.source === 'local' || hasLocalTool);
 
   const handleCopyPermanent = () => {
     navigator.clipboard.writeText(permanentUrl).catch(() => {});

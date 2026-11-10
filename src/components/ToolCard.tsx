@@ -1,11 +1,10 @@
-import { useState } from 'react';
 import {
-  Check,
+  CopyPlus,
   FolderPlus,
-  Link2,
   Lock,
   LockOpen,
   Play,
+  Share2,
   SlidersHorizontal,
   Trash2,
 } from 'lucide-react';
@@ -18,6 +17,8 @@ interface ToolCardProps {
   activeTags: string[];
   onOpen: (tool: ToolRecord) => void;
   onEdit: (tool: ToolRecord) => void;
+  onShare: (tool: ToolRecord) => void;
+  onDuplicate: (tool: ToolRecord) => void;
   onDelete: (tool: ToolRecord) => void;
   onSelectTag: (tag: string) => void;
   onAddToBundle: (tool: ToolRecord) => void;
@@ -29,22 +30,14 @@ export function ToolCard({
   activeTags,
   onOpen,
   onEdit,
+  onShare,
+  onDuplicate,
   onDelete,
   onSelectTag,
   onAddToBundle,
 }: ToolCardProps) {
   const t = getTranslations(lang);
   const accent = ACCENT_COLORS[tool.accent] || ACCENT_COLORS.indigo;
-  const [copied, setCopied] = useState(false);
-
-  const handleCopyLink = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    const url = `${window.location.origin}${window.location.pathname}?tool=${encodeURIComponent(tool.id)}`;
-    navigator.clipboard.writeText(url).catch(() => {});
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-
   const sizeKb = Math.max(1, Math.round(tool.sizeBytes / 1024));
 
   return (
@@ -71,7 +64,7 @@ export function ToolCard({
               </span>
             )}
             {tool.source === 'local' && (
-              <span className="rounded-md bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-600">
+              <span className="rounded-md border border-amber-200 bg-amber-50/70 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
                 {t.localOnlyBadge}
               </span>
             )}
@@ -131,12 +124,12 @@ export function ToolCard({
               {t.openTool}
             </button>
 
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-0.5">
               <button
                 type="button"
                 onClick={() => onEdit(tool)}
                 title={t.editSettings}
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
               >
                 <SlidersHorizontal className="h-4 w-4" />
               </button>
@@ -144,27 +137,33 @@ export function ToolCard({
                 type="button"
                 onClick={() => onAddToBundle(tool)}
                 title={t.addToBundle}
-                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
               >
                 <FolderPlus className="h-4 w-4" />
               </button>
               <button
                 type="button"
-                onClick={handleCopyLink}
-                title={copied ? t.linkCopied : t.copyLink}
-                className={`rounded-lg p-2 transition ${
-                  copied
-                    ? 'bg-emerald-50 text-emerald-600'
-                    : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900'
-                }`}
+                onClick={() => onShare(tool)}
+                title={t.shareToolBtn}
+                className="rounded-lg p-1.5 text-slate-500 transition hover:bg-indigo-50 hover:text-indigo-600"
               >
-                {copied ? <Check className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                <Share2 className="h-4 w-4" />
               </button>
+              {!tool.protected && (
+                <button
+                  type="button"
+                  onClick={() => onDuplicate(tool)}
+                  title={t.duplicateToolBtn}
+                  className="rounded-lg p-1.5 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+                >
+                  <CopyPlus className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onDelete(tool)}
                 title={t.deleteTool}
-                className="rounded-lg p-2 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
               >
                 <Trash2 className="h-4 w-4" />
               </button>

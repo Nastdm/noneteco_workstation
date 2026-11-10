@@ -33,12 +33,13 @@ function extractMeta(html, fileName) {
   const title = rawTitle.replace(/\s+/g, ' ').trim().slice(0, 120) || 'HTML Tool';
 
   const tags = [];
-  const sample = `${title} ${fileName} ${html.slice(0, 15000)}`;
-  if (/grammar|tense|past|perfect|modal|conditional/i.test(sample)) tags.push('Grammar');
-  if (/vocab|word|phrasal|idiom/i.test(sample)) tags.push('Vocabulary');
-  if (/speak|conversation|prompt|warm-?up/i.test(sample)) tags.push('Speaking');
-  if (/quiz|test|answer|score/i.test(sample)) tags.push('Quiz');
-  if (/game|wheel|flashcard|match/i.test(sample)) tags.push('Game');
+  const sample = `${title} ${fileName} ${html.slice(0, 20000)}`;
+  if (/(?:\b(?:grammar|tenses?|past|perfect|modal|conditional|syntax)\b|грамматик|синтаксис|предлог|глагол)/i.test(sample)) tags.push('Grammar');
+  if (/(?:\b(?:vocab|words?|phrasal|idioms?)\b|лексик|словар|перевод|фразов)/i.test(sample)) tags.push('Vocabulary');
+  if (/(?:\b(?:speak|conversation|prompt|warm-?up)\b|разговор|диалог)/i.test(sample)) tags.push('Speaking');
+  if (/(?:\b(?:quiz|test|answer|score)\b|тест|мини-?тест|квиз)/i.test(sample)) tags.push('Quiz');
+  if (/(?:\b(?:game|wheel|flashcard|match)\b|игр|тренаж[её]р|карточк)/i.test(sample)) tags.push('Game');
+  if (/(?:\b(?:guide|cheat.?sheet|summary)\b|гайд|конспект|шпаргалк)/i.test(sample)) tags.push('Guide');
   if (tags.length === 0) tags.push('Interactive');
 
   const lvl = sample.match(/\b(A1|A2|B1|B2|C1|C2)\b/);

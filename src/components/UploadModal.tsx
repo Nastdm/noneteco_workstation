@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { ClipboardPaste, FileCode2, Lock, Plus, Upload, X } from 'lucide-react';
+import { AlertTriangle, ClipboardPaste, FileCode2, Lock, Plus, Upload, X } from 'lucide-react';
 import type { CefrLevel, Language, ToolAccent } from '../types';
 import { ACCENT_COLORS, CEFR_LEVELS, PRESET_TAGS, getTranslations } from '../i18n';
-import { extractHtmlMetadata } from '../lib/htmlMeta';
+import { detectNonStandaloneHtml, extractHtmlMetadata } from '../lib/htmlMeta';
 
 export interface PendingUploadItem {
   fileName: string;
@@ -50,13 +50,20 @@ export function UploadModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const [titleTouched, setTitleTouched] = useState(false);
+  const [descTouched, setDescTouched] = useState(false);
+  const [tagsTouched, setTagsTouched] = useState(false);
+  const [nonStandaloneWarn, setNonStandaloneWarn] = useState(false);
+
   const loadFiles = async (fileList: File[]) => {
     const htmlFiles = fileList.filter((f) => /\.html?$/i.test(f.name) || f.type === 'text/html');
     if (htmlFiles.length === 0) return;
 
     const loaded: PendingUploadItem[] = [];
+    let hasWarn = false;
     for (const f of htmlFiles) {
       const html = await f.text();
+      if (detectNonStandaloneHtml(html)) hasWarn = true;
       const meta = extractHtmlMetadata(html, f.name);
       loaded.push({
         fileName: f.name,
@@ -68,6 +75,7 @@ export function UploadModal({
         accent: meta.suggestedAccent,
       });
     }
+    setNonStandaloneWarn(hasWarn);
     setItems(loaded);
     if (loaded.length === 1) {
       setTitle(loaded[0].title);
@@ -90,12 +98,13 @@ export function UploadModal({
 
   const handlePasteChange = (val: string) => {
     setPastedHtml(val);
+    setNonStandaloneWarn(Boolean(detectNonStandaloneHtml(val)));
     if (val.trim().length > 20) {
-      const meta = extractHtmlMetadata(val, 'pasted-tool.html');
-      if (!title) setTitle(meta.title);
-      if (!description) setDescription(meta.description);
-      if (tags.length === 0) setTags(meta.suggestedTags);
-      if (level === 'All' && meta.suggestedLevel !== 'All') setLevel(meta.suggestedLevel);
+      const meta = extractHtmlMetadata(val, 'custom-tool.html');
+      if (!titleTouched) setTitle(meta.title);
+      if (!descTouched) setDescription(meta.description);
+      if (!tagsTouched) setTags(meta.suggestedTags);
+      if (meta.suggestedLevel !== 'All') setLevel(meta.suggestedLevel);
       setAccent(meta.suggestedAccent);
     }
   };
@@ -107,10 +116,12 @@ export function UploadModal({
       .filter(Boolean);
     if (parts.length === 0) return;
     setTags((prev) => Array.from(new Set([...prev, ...parts])));
+    setTagsTouched(true);
   };
 
   const togglePresetTag = (tag: string) => {
     setTags((prev) => (prev.includes(tag) ? prev.filter((x) => x !== tag) : [...prev, tag]));
+    setTagsTouched(true);
   };
 
   const handleSubmit = async (openAfter: boolean) => {
@@ -252,6 +263,13 @@ export function UploadModal({
             />
           )}
 
+          {nonStandaloneWarn && (
+            <div className="flex items-start gap-2.5 rounded-2xl border border-amber-300 bg-amber-50 p-3.5 text-xs leading-relaxed text-amber-950">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <span>{t.nonStandaloneWarning}</span>
+            </div>
+          )}
+
           {/* Metadata fields (shown for single file or paste) */}
           {(tab === 'paste' || items.length <= 1) && (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -260,7 +278,10 @@ export function UploadModal({
                 <input
                   type="text"
                   value={title}
-                  onChange={(e) => setTitle(e.target.value)}
+                  onChange={(e) => {
+                    setTitleTouched(true);
+                    setTitle(e.target.value);
+                  }}
                   placeholder={t.fieldTitlePlaceholder}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
                 />
@@ -270,7 +291,10 @@ export function UploadModal({
                 <input
                   type="text"
                   value={description}
-                  onChange={(e) => setDescription(e.target.value)}
+                  onChange={(e) => {
+                    setDescTouched(true);
+                    setDescription(e.target.value);
+                  }}
                   placeholder={t.fieldDescPlaceholder}
                   className="w-full rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm outline-none focus:border-indigo-500"
                 />

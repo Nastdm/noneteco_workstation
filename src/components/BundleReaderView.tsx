@@ -81,9 +81,11 @@ export function BundleReaderView({
   const isLocked = Boolean(activeTool?.protected && !activeHtml);
 
   const preparedSrcDoc = useMemo(() => {
-    if (!activeTool || !activeHtml) return '';
+    if (!activeTool?.id || !activeHtml) return '';
     return prepareToolHtmlForIframe(activeHtml, activeTool.id, getToolSandboxStorage(activeTool.id));
-  }, [activeTool, activeHtml]);
+  }, [activeTool?.id, activeHtml]);
+
+  const singleToolMode = Boolean(data.bundle.isSingleTool || (data.tools.length === 1 && !data.bundle.welcomeNote));
 
   return (
     <div className="flex h-screen flex-col bg-[#FAF8F5]">
@@ -97,9 +99,11 @@ export function BundleReaderView({
               <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-indigo-700">
                 {t.bundleReaderBadge}
               </span>
-              <span className="text-xs font-semibold text-slate-500">
-                {t.bundleProgress(completedIds.length, data.tools.length)}
-              </span>
+              {!singleToolMode && (
+                <span className="text-xs font-semibold text-slate-500">
+                  {t.bundleProgress(completedIds.length, data.tools.length)}
+                </span>
+              )}
             </div>
             <h1 className="truncate text-base font-bold text-slate-900">{data.bundle.title}</h1>
           </div>
@@ -125,7 +129,8 @@ export function BundleReaderView({
 
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Bundle Sidebar */}
-        <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-b border-[#E6E2DA] bg-white p-4 md:w-80 md:border-b-0 md:border-r">
+        {!singleToolMode && (
+          <aside className="flex w-full shrink-0 flex-col gap-3 overflow-y-auto border-b border-[#E6E2DA] bg-white p-4 md:w-80 md:border-b-0 md:border-r">
           {data.bundle.welcomeNote && (
             <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-3.5">
               <div className="mb-1 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-amber-800">
@@ -201,7 +206,8 @@ export function BundleReaderView({
               );
             })}
           </div>
-        </aside>
+          </aside>
+        )}
 
         {/* Stage */}
         <main className="flex min-h-0 flex-1 flex-col bg-white">

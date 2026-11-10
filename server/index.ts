@@ -64,6 +64,20 @@ async function main() {
     }),
   );
 
+  app.get(
+    '/api/tools/:id/encrypted',
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const catalog = await store.getCatalog();
+      const tool = catalog.tools.find((t) => t.id === id);
+      if (!tool) throw new StoreError(404, 'Tool not found');
+      if (!tool.protected) throw new StoreError(400, 'Tool is not encrypted');
+      const encPath = path.resolve(store.libraryDir, tool.blobPath || `blobs/${id}.enc.json`);
+      const rawEnc = await fs.readFile(encPath, 'utf8');
+      res.json({ encrypted: JSON.parse(rawEnc) as EncryptedPayload });
+    }),
+  );
+
   app.post(
     '/api/tools/:id/unlock',
     asyncHandler(async (req, res) => {
