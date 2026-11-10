@@ -26,6 +26,7 @@ export async function createShareEnvelope(
   bundle: BundleRecord,
   tools: SharePayloadTool[],
   bundlePassword?: string,
+  options?: { isSingleTool?: boolean },
 ): Promise<ShareEnvelope> {
   const plain: SharePayloadPlain = {
     v: 1,
@@ -37,6 +38,7 @@ export async function createShareEnvelope(
       accent: bundle.accent,
       tags: bundle.tags,
       createdAt: bundle.createdAt,
+      isSingleTool: options?.isSingleTool,
     },
     tools,
   };
@@ -64,8 +66,21 @@ export async function buildShareUrl(
   bundle: BundleRecord,
   tools: SharePayloadTool[],
   bundlePassword?: string,
+  options?: { isSingleTool?: boolean },
 ): Promise<{ url: string; length: number; tooLong: boolean }> {
-  const envelope = await createShareEnvelope(bundle, tools, bundlePassword);
+  let rawEstimate = 0;
+  for (const tl of tools) {
+    rawEstimate += tl.html ? tl.html.length : tl.encrypted ? tl.encrypted.data.length : 0;
+  }
+  if (rawEstimate > 250_000) {
+    return {
+      url: '',
+      length: rawEstimate,
+      tooLong: true,
+    };
+  }
+
+  const envelope = await createShareEnvelope(bundle, tools, bundlePassword, options);
   const jsonBytes = strToU8(JSON.stringify(envelope));
   const compressed = zlibSync(jsonBytes, { level: 9 });
   const encoded = toBase64Url(compressed);
@@ -102,8 +117,9 @@ export async function generatePortableBundleHtml(
   bundle: BundleRecord,
   tools: SharePayloadTool[],
   bundlePassword?: string,
+  options?: { isSingleTool?: boolean },
 ): Promise<string> {
-  const envelope = await createShareEnvelope(bundle, tools, bundlePassword);
+  const envelope = await createShareEnvelope(bundle, tools, bundlePassword, options);
   const safeJson = JSON.stringify(envelope).replace(/</g, '\\u003c').replace(/>/g, '\\u003e');
   const safeTitle = bundle.title.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 

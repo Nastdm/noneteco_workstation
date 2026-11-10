@@ -164,7 +164,13 @@ export async function loadCatalog(mode: RuntimeMode): Promise<{ catalog: Catalog
 
   const mergedBundles: BundleRecord[] = [];
   for (const b of localBundles) {
-    if (!delBundleSet.has(b.id)) mergedBundles.push({ ...b, source: 'local' });
+    if (!delBundleSet.has(b.id)) {
+      mergedBundles.push({
+        ...b,
+        toolIds: b.toolIds.filter((tid) => !delToolSet.has(tid)),
+        source: 'local',
+      });
+    }
   }
   for (const b of staticCat.bundles) {
     if (!delBundleSet.has(b.id) && !localBundleMap.has(b.id)) {
@@ -234,6 +240,15 @@ export async function unlockTool(mode: RuntimeMode, tool: ToolRecord, password: 
   return decryptText(payload, password);
 }
 
+function toUtf8Base64(text: string): string {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return btoa(bin);
+}
+
 export async function createTool(
   mode: RuntimeMode,
   input: {
@@ -249,6 +264,22 @@ export async function createTool(
   },
 ): Promise<ToolRecord> {
   if (mode === 'server') {
+    if (input.html.length > 1_000_000) {
+      const { html, ...meta } = input;
+      const res = await fetch(`${BASE}api/tools/raw`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'X-Tool-Meta': toUtf8Base64(JSON.stringify(meta)),
+        },
+        body: html,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error((data as { error?: string }).error || `Request failed (${res.status})`);
+      }
+      return data as ToolRecord;
+    }
     return apiJson<ToolRecord>('api/tools', {
       method: 'POST',
       body: JSON.stringify(input),
@@ -528,6 +559,79 @@ export async function deleteBundle(mode: RuntimeMode, id: string): Promise<void>
   }
   await idbDelete('bundles', id);
   await idbPut('deletedBundles', { id });
+}
+
+export async function exportSingleToolPayload(
+  mode: RuntimeMode,
+  tool: ToolRecord,
+): Promise<SharePayloadTool> {
+  if (mode === 'server') {
+    if (tool.protected) {
+      // Fetch encrypted payload via a 1-item export or dedicated logic; fallback: use bundle-style check
+      const res = await apiJson<{ encrypted: EncryptedPayload }>(
+        `api/tools/${encodeURIComponent(tool.id)}/encrypted`,
+      );
+      return {
+        id: tool.id,
+        title: tool.title,
+        description: tool.description,
+        fileName: tool.fileName,
+        tags: tool.tags,
+        level: tool.level,
+        accent: tool.accent,
+        protected: true,
+        passwordHint: tool.passwordHint,
+        encrypted: res.encrypted,
+      };
+    }
+    const html = await getToolHtml('server', tool);
+    return {
+      id: tool.id,
+      title: tool.title,
+      description: tool.description,
+      fileName: tool.fileName,
+      tags: tool.tags,
+      level: tool.level,
+      accent: tool.accent,
+      protected: false,
+      html,
+    };
+  }
+
+  if (tool.protected) {
+    const localBlob = await idbGet<LocalBlobEntry>('blobs', tool.id);
+    let encrypted = localBlob?.encrypted;
+    if (!encrypted) {
+      const rel = tool.blobPath || `blobs/${tool.id}.enc.json`;
+      const res = await fetch(`${BASE}library/${rel}`, { cache: 'no-store' });
+      encrypted = (await res.json()) as EncryptedPayload;
+    }
+    return {
+      id: tool.id,
+      title: tool.title,
+      description: tool.description,
+      fileName: tool.fileName,
+      tags: tool.tags,
+      level: tool.level,
+      accent: tool.accent,
+      protected: true,
+      passwordHint: tool.passwordHint,
+      encrypted,
+    };
+  }
+
+  const html = await getToolHtml('static', tool);
+  return {
+    id: tool.id,
+    title: tool.title,
+    description: tool.description,
+    fileName: tool.fileName,
+    tags: tool.tags,
+    level: tool.level,
+    accent: tool.accent,
+    protected: false,
+    html,
+  };
 }
 
 export async function exportBundleTools(

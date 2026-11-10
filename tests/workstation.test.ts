@@ -6,7 +6,7 @@ import path from 'node:path';
 import { encryptText as nodeEncrypt, decryptText as nodeDecrypt } from '../server/crypto.ts';
 import { encryptText as webEncrypt, decryptText as webDecrypt } from '../src/lib/crypto.ts';
 import { LibraryStore } from '../server/store.ts';
-import { extractHtmlMetadata, prepareToolHtmlForIframe, slugify } from '../src/lib/htmlMeta.ts';
+import { detectNonStandaloneHtml, extractHtmlMetadata, prepareToolHtmlForIframe, slugify } from '../src/lib/htmlMeta.ts';
 import { buildShareUrl, decryptShareEnvelope, generatePortableBundleHtml, parseShareHash } from '../src/lib/share.ts';
 
 test('Node crypto and Browser WebCrypto PBKDF2-AES-256-GCM are 100% interoperable', async () => {
@@ -41,6 +41,22 @@ test('HTML metadata extraction, Cyrillic slugification, and sandbox localStorage
   assert.ok(bridged.includes('noneteco-storage-update'));
   assert.ok(bridged.includes('"score":"42"'));
   assert.ok(bridged.includes('<meta charset="UTF-8">'));
+
+  // Russian keyword auto-tagging
+  const ruMeta = extractHtmlMetadata(
+    '<html><head><title>Синтаксис и предлоги: мини-тест и гайд</title></head><body>Грамматика, перевод</body></html>',
+    'sintaksis.html',
+  );
+  assert.ok(ruMeta.suggestedTags.includes('Grammar'));
+  assert.ok(ruMeta.suggestedTags.includes('Quiz'));
+  assert.ok(ruMeta.suggestedTags.includes('Guide'));
+
+  // Non-standalone Vite entry HTML detection & iframe safety
+  const viteHtml = '<html><body><div id="root"></div><script type="module" src="/src/main.tsx"></script></body></html>';
+  assert.equal(detectNonStandaloneHtml(viteHtml), 'vite_entry');
+  const safeVite = prepareToolHtmlForIframe(viteHtml, 'vite-1', {});
+  assert.ok(!safeVite.includes('<script type="module" src="/src/main.tsx">'));
+  assert.ok(safeVite.includes('Non-standalone HTML detected'));
 });
 
 test('LibraryStore CRUD, drop ingestion, password locks, and bundle management', async () => {
@@ -163,4 +179,26 @@ test('Share URL compression/encryption and Portable Bundle HTML generation', asy
   const portableHtml = await generatePortableBundleHtml(bundle, toolsPayload, 'pass123');
   assert.ok(portableHtml.includes('<!DOCTYPE html>'));
   assert.ok(!portableHtml.includes('<h1>Hi!</h1>')); // encrypted inside portable HTML when bundle has password!
+
+  // Oversized payload skips heavy URL compression immediately
+  const bigRes = await buildShareUrl(bundle, [
+    { ...toolsPayload[0], html: 'x'.repeat(300_000) },
+  ]);
+  assert.equal(bigRes.tooLong, true);
+  assert.equal(bigRes.url, '');
+});
+
+test('Large HTML files (10MB+) process quickly without regex stalling', () => {
+  const bigBody = '<div>' + 'A'.repeat(10_000_000) + '</div>';
+  const bigHtml = `<!DOCTYPE html><html><head><title>Big Lesson Tool B2</title></head><body><h1>Lesson</h1>${bigBody}</body></html>`;
+
+  const t0 = performance.now();
+  assert.equal(detectNonStandaloneHtml(bigHtml), null);
+  const meta = extractHtmlMetadata(bigHtml, 'big-lesson.html');
+  assert.equal(meta.title, 'Big Lesson Tool B2');
+  assert.equal(meta.suggestedLevel, 'B2');
+  const bridged = prepareToolHtmlForIframe(bigHtml, 'big-lesson', {});
+  assert.ok(bridged.includes('noneteco-storage-update'));
+  const elapsed = performance.now() - t0;
+  assert.ok(elapsed < 500, `Expected <500ms, got ${elapsed}ms`);
 });

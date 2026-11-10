@@ -14,7 +14,8 @@ async function main() {
   await store.init();
 
   const app = express();
-  app.use(express.json({ limit: '15mb' }));
+  app.use(express.json({ limit: '100mb' }));
+  app.use(express.text({ type: 'text/html', limit: '100mb' }));
 
   const asyncHandler = (
     fn: (req: Request, res: Response, next: NextFunction) => Promise<void>,
@@ -56,11 +57,43 @@ async function main() {
     }),
   );
 
+  app.post(
+    '/api/tools/raw',
+    asyncHandler(async (req, res) => {
+      const metaHeader = req.headers['x-tool-meta'];
+      if (typeof metaHeader !== 'string' || !metaHeader) {
+        throw new StoreError(400, 'Missing X-Tool-Meta header');
+      }
+      const metaJson = Buffer.from(metaHeader, 'base64').toString('utf8');
+      const meta = JSON.parse(metaJson) as Record<string, unknown>;
+      const html = typeof req.body === 'string' ? req.body : '';
+      const record = await store.createTool({
+        ...(meta as Omit<Parameters<typeof store.createTool>[0], 'html'>),
+        html,
+      });
+      res.status(201).json(record);
+    }),
+  );
+
   app.get(
     '/api/tools/:id/content',
     asyncHandler(async (req, res) => {
       const html = await store.getToolHtml(String(req.params.id));
       res.json({ html });
+    }),
+  );
+
+  app.get(
+    '/api/tools/:id/encrypted',
+    asyncHandler(async (req, res) => {
+      const id = String(req.params.id);
+      const catalog = await store.getCatalog();
+      const tool = catalog.tools.find((t) => t.id === id);
+      if (!tool) throw new StoreError(404, 'Tool not found');
+      if (!tool.protected) throw new StoreError(400, 'Tool is not encrypted');
+      const encPath = path.resolve(store.libraryDir, tool.blobPath || `blobs/${id}.enc.json`);
+      const rawEnc = await fs.readFile(encPath, 'utf8');
+      res.json({ encrypted: JSON.parse(rawEnc) as EncryptedPayload });
     }),
   );
 
@@ -181,6 +214,11 @@ async function main() {
       res.status(err.status).json({ error: err.message });
       return;
     }
+    const maybeErr = err as { type?: string; status?: number; message?: string };
+    if (maybeErr?.type === 'entity.too.large' || maybeErr?.status === 413) {
+      res.status(413).json({ error: 'File is too large (limit 100 MB)' });
+      return;
+    }
     console.error(err);
     res.status(500).json({ error: 'Internal server error' });
   });
@@ -201,6 +239,9 @@ async function main() {
         host: '0.0.0.0',
         allowedHosts: true,
         hmr: { server },
+        watch: {
+          ignored: ['**/library/**', '**/dist/**'],
+        },
       },
       appType: 'spa',
     });

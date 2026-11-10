@@ -12,11 +12,15 @@ interface LibraryViewProps {
   onClearTags: () => void;
   onOpenTool: (tool: ToolRecord) => void;
   onEditTool: (tool: ToolRecord) => void;
+  onShareTool: (tool: ToolRecord) => void;
+  onDuplicateTool: (tool: ToolRecord) => void;
   onDeleteTool: (tool: ToolRecord) => void;
   onAddToBundle: (tool: ToolRecord) => void;
   onOpenUploadFiles: (files: FileList) => void;
   onOpenPasteModal: () => void;
 }
+
+type SortBy = 'newest' | 'title' | 'locked';
 
 export function LibraryView({
   lang,
@@ -26,6 +30,8 @@ export function LibraryView({
   onClearTags,
   onOpenTool,
   onEditTool,
+  onShareTool,
+  onDuplicateTool,
   onDeleteTool,
   onAddToBundle,
   onOpenUploadFiles,
@@ -36,6 +42,7 @@ export function LibraryView({
   const [search, setSearch] = useState('');
   const [lockFilter, setLockFilter] = useState<'all' | 'locked' | 'open'>('all');
   const [levelFilter, setLevelFilter] = useState<CefrLevel>('All');
+  const [sortBy, setSortBy] = useState<SortBy>('newest');
   const [tagLinkCopied, setTagLinkCopied] = useState(false);
 
   const tagCounts = useMemo(() => {
@@ -45,12 +52,16 @@ export function LibraryView({
         counts.set(tag, (counts.get(tag) || 0) + 1);
       }
     }
+    // Keep selected tags visible even if their count dropped to 0
+    for (const sel of selectedTags) {
+      if (!counts.has(sel)) counts.set(sel, 0);
+    }
     return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
-  }, [tools]);
+  }, [tools, selectedTags]);
 
   const filteredTools = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return tools.filter((tool) => {
+    const list = tools.filter((tool) => {
       if (lockFilter === 'locked' && !tool.protected) return false;
       if (lockFilter === 'open' && tool.protected) return false;
       if (levelFilter !== 'All' && tool.level !== levelFilter) return false;
@@ -65,7 +76,15 @@ export function LibraryView({
         tool.tags.some((tg) => tg.toLowerCase().includes(q))
       );
     });
-  }, [tools, search, lockFilter, levelFilter, selectedTags]);
+
+    if (sortBy === 'title') {
+      return [...list].sort((a, b) => a.title.localeCompare(b.title));
+    }
+    if (sortBy === 'locked') {
+      return [...list].sort((a, b) => Number(b.protected) - Number(a.protected));
+    }
+    return list;
+  }, [tools, search, lockFilter, levelFilter, selectedTags, sortBy]);
 
   const hasFilters = Boolean(search.trim()) || lockFilter !== 'all' || levelFilter !== 'All' || selectedTags.length > 0;
 
@@ -86,7 +105,6 @@ export function LibraryView({
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-      {/* Compact Drop Strip */}
       <div className="mb-6 flex flex-col justify-between gap-4 rounded-2xl border border-dashed border-indigo-300 bg-gradient-to-r from-indigo-50/80 via-white to-amber-50/50 p-5 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
@@ -186,10 +204,19 @@ export function LibraryView({
                 </option>
               ))}
             </select>
+
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as SortBy)}
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none focus:border-indigo-500"
+            >
+              <option value="newest">{t.sortNewest}</option>
+              <option value="title">{t.sortTitle}</option>
+              <option value="locked">{t.sortLocked}</option>
+            </select>
           </div>
         </div>
 
-        {/* Tag Navigation Bar */}
         {tagCounts.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 border-t border-slate-100 pt-3">
             <span className="mr-1 inline-flex items-center gap-1 text-xs font-semibold text-slate-500">
@@ -242,12 +269,10 @@ export function LibraryView({
         )}
       </div>
 
-      {/* Count Row */}
       <div className="mb-3 flex items-center justify-between text-xs font-semibold text-slate-500">
         <span>{t.toolsCount(filteredTools.length)}</span>
       </div>
 
-      {/* Cards Grid */}
       {filteredTools.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-[#E6E2DA] bg-white px-6 py-16 text-center">
           <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
@@ -266,6 +291,8 @@ export function LibraryView({
               activeTags={selectedTags}
               onOpen={onOpenTool}
               onEdit={onEditTool}
+              onShare={onShareTool}
+              onDuplicate={onDuplicateTool}
               onDelete={onDeleteTool}
               onSelectTag={onToggleTag}
               onAddToBundle={onAddToBundle}

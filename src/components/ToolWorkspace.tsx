@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   ArrowLeft,
-  ArrowRight,
   Check,
+  ChevronDown,
   Code2,
   Download,
   Lock,
@@ -13,6 +14,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  Share2,
   SlidersHorizontal,
   Smartphone,
   Tablet,
@@ -21,7 +23,7 @@ import {
 } from 'lucide-react';
 import type { Language, ToolRecord } from '../types';
 import { getTranslations } from '../i18n';
-import { prepareToolHtmlForIframe } from '../lib/htmlMeta';
+import { detectNonStandaloneHtml, prepareToolHtmlForIframe } from '../lib/htmlMeta';
 import { getToolSandboxStorage, setToolSandboxStorage } from '../lib/storage';
 
 interface ToolWorkspaceProps {
@@ -34,6 +36,7 @@ interface ToolWorkspaceProps {
   onJumpToTag: (tag: string) => void;
   onOpenTool: (tool: ToolRecord) => void;
   onEditSettings: (tool: ToolRecord) => void;
+  onShareTool: (tool: ToolRecord) => void;
   onLockAgain?: () => void;
   onSaveNotes: (toolId: string, notes: string) => Promise<void>;
   onSaveHtml: (toolId: string, newHtml: string) => Promise<void>;
@@ -44,7 +47,9 @@ type ViewportMode = 'desktop' | 'tablet' | 'mobile';
 
 function playChime() {
   try {
-    const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioCtx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     const ctx = new AudioCtx();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -62,6 +67,8 @@ function playChime() {
   }
 }
 
+const LARGE_HTML_THRESHOLD = 400_000;
+
 export function ToolWorkspace({
   lang,
   tool,
@@ -72,27 +79,27 @@ export function ToolWorkspace({
   onJumpToTag,
   onOpenTool,
   onEditSettings,
+  onShareTool,
   onLockAgain,
   onSaveNotes,
   onSaveHtml,
 }: ToolWorkspaceProps) {
   const t = getTranslations(lang);
   const [liveHtml, setLiveHtml] = useState(html);
-  const [codeDraft, setCodeDraft] = useState(html);
+  const [codeDraft, setCodeDraft] = useState(() => (html.length <= LARGE_HTML_THRESHOLD ? html : ''));
   const [iframeKey, setIframeKey] = useState(0);
   const [viewport, setViewport] = useState<ViewportMode>('desktop');
   const [zenMode, setZenMode] = useState(false);
   const [sideTab, setSideTab] = useState<SideTab>(null);
+  const [tagMenuOpen, setTagMenuOpen] = useState(false);
 
-  // Notes state
   const [notes, setNotes] = useState(tool.notes || '');
-  const [notesSavedToast, setNotesSavedToast] = useState(false);
+  const [notesStatus, setNotesStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const lastSavedNotesRef = useRef(tool.notes || '');
 
-  // Code save state
   const [savingCode, setSavingCode] = useState(false);
   const [codeSavedToast, setCodeSavedToast] = useState(false);
 
-  // Timer state
   const [timerPreset, setTimerPreset] = useState(60);
   const [secondsLeft, setSecondsLeft] = useState(60);
   const [timerRunning, setTimerRunning] = useState(false);
@@ -100,10 +107,29 @@ export function ToolWorkspace({
 
   useEffect(() => {
     setLiveHtml(html);
-    setCodeDraft(html);
+    setCodeDraft(html.length <= LARGE_HTML_THRESHOLD ? html : '');
     setNotes(tool.notes || '');
+    lastSavedNotesRef.current = tool.notes || '';
+    setNotesStatus('idle');
+    setTagMenuOpen(false);
     setIframeKey((k) => k + 1);
   }, [tool.id, html]);
+
+  // Debounced auto-save for notes
+  useEffect(() => {
+    if (notes === lastSavedNotesRef.current) return;
+    setNotesStatus('saving');
+    const id = window.setTimeout(async () => {
+      try {
+        await onSaveNotes(tool.id, notes);
+        lastSavedNotesRef.current = notes;
+        setNotesStatus('saved');
+      } catch {
+        setNotesStatus('idle');
+      }
+    }, 800);
+    return () => window.clearTimeout(id);
+  }, [notes, tool.id, onSaveNotes]);
 
   useEffect(() => {
     const handler = (event: MessageEvent) => {
@@ -136,20 +162,40 @@ export function ToolWorkspace({
     };
   }, [timerRunning]);
 
-  const preparedSrcDoc = useMemo(() => {
+  const nonStandaloneKind = useMemo(() => detectNonStandaloneHtml(liveHtml), [liveHtml]);
+  const isTooLargeForCodeEditor = liveHtml.length > LARGE_HTML_THRESHOLD;
+
+  const preparedHtml = useMemo(() => {
     const saved = getToolSandboxStorage(tool.id);
     return prepareToolHtmlForIframe(liveHtml, tool.id, saved);
   }, [liveHtml, tool.id, iframeKey]);
 
-  const nextToolSuggestion = useMemo(() => {
-    if (tool.tags.length === 0) return null;
-    for (const tag of tool.tags) {
-      const candidates = allTools.filter((item) => item.id !== tool.id && item.tags.includes(tag));
-      if (candidates.length > 0) {
-        return { tag, tool: candidates[0] };
+  const useBlobIframe = preparedHtml.length > LARGE_HTML_THRESHOLD;
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!useBlobIframe) {
+      setBlobUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([preparedHtml], { type: 'text/html;charset=utf-8' }));
+    setBlobUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [preparedHtml, useBlobIframe]);
+
+  const relatedTools = useMemo(() => {
+    if (tool.tags.length === 0) return [];
+    const out: Array<{ tool: ToolRecord; sharedTags: string[] }> = [];
+    for (const candidate of allTools) {
+      if (candidate.id === tool.id) continue;
+      const sharedTags = candidate.tags.filter((tg) => tool.tags.includes(tg));
+      if (sharedTags.length > 0) {
+        out.push({ tool: candidate, sharedTags });
       }
     }
-    return null;
+    return out;
   }, [allTools, tool.id, tool.tags]);
 
   const handleDownloadHtml = () => {
@@ -163,9 +209,10 @@ export function ToolWorkspace({
   };
 
   const handleSaveNotesNow = async () => {
+    setNotesStatus('saving');
     await onSaveNotes(tool.id, notes);
-    setNotesSavedToast(true);
-    setTimeout(() => setNotesSavedToast(false), 1800);
+    lastSavedNotesRef.current = notes;
+    setNotesStatus('saved');
   };
 
   const handleSaveCode = async () => {
@@ -231,23 +278,51 @@ export function ToolWorkspace({
                       #{tg}
                     </button>
                   ))}
-                  {nextToolSuggestion && (
-                    <button
-                      type="button"
-                      onClick={() => onOpenTool(nextToolSuggestion.tool)}
-                      className="ml-1 inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50/70 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
-                      title={nextToolSuggestion.tool.title}
-                    >
-                      <span>{t.nextInTag} #{nextToolSuggestion.tag}</span>
-                      <ArrowRight className="h-3 w-3" />
-                    </button>
+                  {relatedTools.length > 0 && (
+                    <div className="relative ml-1">
+                      <button
+                        type="button"
+                        onClick={() => setTagMenuOpen((o) => !o)}
+                        className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50/70 px-2.5 py-0.5 text-[11px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                      >
+                        <span>
+                          {t.nextInTag} ({relatedTools.length})
+                        </span>
+                        <ChevronDown className="h-3 w-3" />
+                      </button>
+
+                      {tagMenuOpen && (
+                        <div className="absolute left-0 top-full z-40 mt-1.5 w-72 rounded-2xl border border-[#E6E2DA] bg-white p-2 shadow-xl">
+                          <div className="max-h-60 space-y-1 overflow-y-auto">
+                            {relatedTools.map(({ tool: rel, sharedTags }) => (
+                              <button
+                                key={rel.id}
+                                type="button"
+                                onClick={() => {
+                                  setTagMenuOpen(false);
+                                  onOpenTool(rel);
+                                }}
+                                className="flex w-full items-center justify-between gap-2 rounded-xl px-2.5 py-2 text-left text-xs hover:bg-indigo-50"
+                              >
+                                <div className="min-w-0">
+                                  <div className="truncate font-semibold text-slate-800">{rel.title}</div>
+                                  <div className="mt-0.5 text-[10px] text-indigo-600">
+                                    {sharedTags.map((s) => `#${s}`).join(' ')}
+                                  </div>
+                                </div>
+                                {rel.protected && <Lock className="h-3.5 w-3.5 shrink-0 text-amber-600" />}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5">
-              {/* Viewport switcher */}
               <div className="hidden items-center rounded-xl bg-[#F4F1EA] p-0.5 md:flex">
                 <button
                   type="button"
@@ -322,6 +397,15 @@ export function ToolWorkspace({
 
               <button
                 type="button"
+                onClick={() => onShareTool(tool)}
+                title={t.shareToolBtn}
+                className="rounded-xl border border-[#E6E2DA] bg-white p-1.5 text-slate-600 hover:bg-indigo-50 hover:text-indigo-600"
+              >
+                <Share2 className="h-4 w-4" />
+              </button>
+
+              <button
+                type="button"
                 onClick={() => onEditSettings(tool)}
                 title={t.editSettings}
                 className="rounded-xl border border-[#E6E2DA] bg-white p-1.5 text-slate-600 hover:bg-slate-50"
@@ -360,6 +444,13 @@ export function ToolWorkspace({
               </button>
             </div>
           </div>
+
+          {nonStandaloneKind && (
+            <div className="mx-auto mt-2 flex max-w-7xl items-center gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600" />
+              <span>{t.nonStandaloneWarning}</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -372,14 +463,14 @@ export function ToolWorkspace({
           <iframe
             key={`${tool.id}-${iframeKey}`}
             title={tool.title}
-            srcDoc={preparedSrcDoc}
+            src={useBlobIframe ? blobUrl || undefined : undefined}
+            srcDoc={useBlobIframe ? undefined : preparedHtml}
             sandbox="allow-scripts allow-forms allow-modals allow-popups allow-downloads"
             allow="autoplay"
             className={`h-full bg-white ${iframeWidthClass}`}
           />
         </div>
 
-        {/* Collapsible Tutor Utility Side Drawer */}
         {!zenMode && sideTab && (
           <aside className="flex w-80 shrink-0 flex-col border-l border-[#E6E2DA] bg-white sm:w-96">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -475,7 +566,11 @@ export function ToolWorkspace({
                 />
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-xs font-semibold text-emerald-600">
-                    {notesSavedToast ? t.notesSaved : ''}
+                    {notesStatus === 'saving'
+                      ? t.notesSaving
+                      : notesStatus === 'saved'
+                        ? t.notesSaved
+                        : ''}
                   </span>
                   <button
                     type="button"
@@ -491,33 +586,49 @@ export function ToolWorkspace({
 
             {sideTab === 'code' && (
               <div className="flex flex-1 flex-col p-4">
-                <textarea
-                  value={codeDraft}
-                  onChange={(e) => setCodeDraft(e.target.value)}
-                  spellCheck={false}
-                  className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-950 p-3 font-mono text-xs leading-relaxed text-emerald-300 outline-none focus:border-indigo-500"
-                />
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLiveHtml(codeDraft);
-                      setIframeKey((k) => k + 1);
-                    }}
-                    className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    {t.applyPreviewBtn}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={savingCode}
-                    onClick={handleSaveCode}
-                    className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    {codeSavedToast ? <Check className="h-3.5 w-3.5" /> : null}
-                    {codeSavedToast ? t.codeSavedToast : t.saveCodeChangesBtn}
-                  </button>
-                </div>
+                {isTooLargeForCodeEditor ? (
+                  <div className="flex flex-1 flex-col items-center justify-center rounded-xl border border-[#E6E2DA] bg-[#FAF8F5] p-5 text-center">
+                    <p className="text-xs leading-relaxed text-slate-600">{t.codeTooLargeHint}</p>
+                    <button
+                      type="button"
+                      onClick={handleDownloadHtml}
+                      className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white hover:bg-indigo-600"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      {t.downloadHtmlBtn}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <textarea
+                      value={codeDraft}
+                      onChange={(e) => setCodeDraft(e.target.value)}
+                      spellCheck={false}
+                      className="flex-1 resize-none rounded-xl border border-slate-300 bg-slate-950 p-3 font-mono text-xs leading-relaxed text-emerald-300 outline-none focus:border-indigo-500"
+                    />
+                    <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setLiveHtml(codeDraft);
+                          setIframeKey((k) => k + 1);
+                        }}
+                        className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                      >
+                        {t.applyPreviewBtn}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={savingCode}
+                        onClick={handleSaveCode}
+                        className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+                      >
+                        {codeSavedToast ? <Check className="h-3.5 w-3.5" /> : null}
+                        {codeSavedToast ? t.codeSavedToast : t.saveCodeChangesBtn}
+                      </button>
+                    </div>
+                  </>
+                )}
               </div>
             )}
           </aside>

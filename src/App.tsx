@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FileUp } from 'lucide-react';
+import { FileQuestion, FileUp } from 'lucide-react';
 import type {
   BundleRecord,
   CatalogData,
@@ -35,6 +35,8 @@ import { EditToolModal } from './components/EditToolModal';
 import { BundlesView } from './components/BundlesView';
 import { BundleModal } from './components/BundleModal';
 import { ShareBundleModal } from './components/ShareBundleModal';
+import { ShareToolModal } from './components/ShareToolModal';
+import { AddToBundleModal } from './components/AddToBundleModal';
 import { BundleReaderView } from './components/BundleReaderView';
 import { GitHubSyncModal } from './components/GitHubSyncModal';
 
@@ -83,6 +85,8 @@ export default function App() {
     preselectToolId: string | null;
   }>({ open: false, editing: null, preselectToolId: null });
   const [sharingBundle, setSharingBundle] = useState<BundleRecord | null>(null);
+  const [sharingTool, setSharingTool] = useState<ToolRecord | null>(null);
+  const [addingToBundleTool, setAddingToBundleTool] = useState<ToolRecord | null>(null);
   const [githubOpen, setGithubOpen] = useState(false);
 
   // Global drag overlay
@@ -186,19 +190,20 @@ export default function App() {
 
   // Load bundle reader payload when activeBundleId is open and unlocked
   const activeBundle = catalog.bundles.find((b) => b.id === activeBundleId) || null;
+  const activeBundleUnlockedPw = activeBundle ? unlockedBundles[activeBundle.id]?.password : undefined;
+  const activeBundleUnlockedFlag = Boolean(activeBundle && (!activeBundle.protected || unlockedBundles[activeBundle.id]));
+  const activeBundleKey = activeBundle
+    ? `${activeBundle.id}:${activeBundle.updatedAt}:${activeBundle.toolIds.join(',')}`
+    : '';
+
   useEffect(() => {
-    if (!activeBundle) {
-      setBundleReaderData(null);
-      return;
-    }
-    const unlockedInfo = unlockedBundles[activeBundle.id];
-    if (activeBundle.protected && !unlockedInfo) {
+    if (!activeBundle || !activeBundleUnlockedFlag) {
       setBundleReaderData(null);
       return;
     }
 
     let cancelled = false;
-    exportBundleTools(mode, activeBundle, catalog.tools, unlockedInfo?.password)
+    exportBundleTools(mode, activeBundle, catalog.tools, activeBundleUnlockedPw)
       .then((toolsPayload) => {
         if (!cancelled) {
           setBundleReaderData({
@@ -221,7 +226,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeBundle, catalog.tools, mode, unlockedBundles]);
+  }, [activeBundleKey, activeBundleUnlockedFlag, activeBundleUnlockedPw, mode]);
 
   // Global drag-and-drop listeners
   useEffect(() => {
@@ -369,6 +374,21 @@ export default function App() {
     await refreshCatalog();
   };
 
+  const handleDuplicateTool = async (tool: ToolRecord) => {
+    if (tool.protected) return;
+    const html = unlockedTools[tool.id]?.html || (await getToolHtml(mode, tool));
+    await createTool(mode, {
+      title: `${tool.title} (Copy)`,
+      description: tool.description,
+      fileName: tool.fileName,
+      html,
+      tags: tool.tags,
+      level: tool.level,
+      accent: tool.accent,
+    });
+    await refreshCatalog();
+  };
+
   if (booting) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5]">
@@ -432,6 +452,25 @@ export default function App() {
   }
 
   // 2. Direct Bundle Route (?bundle=...)
+  if (activeBundleId && !activeBundle) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F5] p-6">
+        <div className="max-w-md rounded-2xl border border-[#E6E2DA] bg-white p-7 text-center shadow-lg">
+          <FileQuestion className="mx-auto mb-3 h-10 w-10 text-slate-400" />
+          <h2 className="text-lg font-bold text-slate-900">{t.notFoundTitle}</h2>
+          <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.notFoundDesc}</p>
+          <button
+            type="button"
+            onClick={handleGoHome}
+            className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+          >
+            {t.backHomeBtn}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (activeBundle) {
     const bundleUnlocked = !activeBundle.protected || Boolean(unlockedBundles[activeBundle.id]);
     if (!bundleUnlocked) {
@@ -516,7 +555,22 @@ export default function App() {
         onGoHome={handleGoHome}
       />
 
-      {activeTool ? (
+      {activeToolId && !activeTool ? (
+        <div className="flex min-h-[70vh] items-center justify-center p-6">
+          <div className="max-w-md rounded-2xl border border-[#E6E2DA] bg-white p-7 text-center shadow-lg">
+            <FileQuestion className="mx-auto mb-3 h-10 w-10 text-slate-400" />
+            <h2 className="text-lg font-bold text-slate-900">{t.notFoundTitle}</h2>
+            <p className="mt-2 text-sm leading-relaxed text-slate-500">{t.notFoundDesc}</p>
+            <button
+              type="button"
+              onClick={handleGoHome}
+              className="mt-5 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
+            >
+              {t.backHomeBtn}
+            </button>
+          </div>
+        </div>
+      ) : activeTool ? (
         activeTool.protected && !unlockedTools[activeTool.id] ? (
           <PasswordGate
             lang={lang}
@@ -549,6 +603,7 @@ export default function App() {
             onJumpToTag={handleJumpToTag}
             onOpenTool={handleOpenTool}
             onEditSettings={(tl) => setEditingTool(tl)}
+            onShareTool={(tl) => setSharingTool(tl)}
             onLockAgain={
               activeTool.protected
                 ? () => {
@@ -592,10 +647,16 @@ export default function App() {
           }}
           onOpenTool={handleOpenTool}
           onEditTool={(tl) => setEditingTool(tl)}
+          onShareTool={(tl) => setSharingTool(tl)}
+          onDuplicateTool={handleDuplicateTool}
           onDeleteTool={handleDeleteTool}
-          onAddToBundle={(tl) =>
-            setBundleModalState({ open: true, editing: null, preselectToolId: tl.id })
-          }
+          onAddToBundle={(tl) => {
+            if (catalog.bundles.length === 0) {
+              setBundleModalState({ open: true, editing: null, preselectToolId: tl.id });
+            } else {
+              setAddingToBundleTool(tl);
+            }
+          }}
           onOpenUploadFiles={(fileList) =>
             setUploadState({ open: true, mode: 'file', files: Array.from(fileList) })
           }
@@ -695,9 +756,41 @@ export default function App() {
           mode={mode}
           bundle={sharingBundle}
           allTools={catalog.tools}
-          hasLocalChanges={hasLocalChanges}
           sessionBundlePassword={unlockedBundles[sharingBundle.id]?.password}
           onClose={() => setSharingBundle(null)}
+        />
+      )}
+
+      {sharingTool && (
+        <ShareToolModal
+          lang={lang}
+          mode={mode}
+          tool={sharingTool}
+          onClose={() => setSharingTool(null)}
+        />
+      )}
+
+      {addingToBundleTool && (
+        <AddToBundleModal
+          lang={lang}
+          tool={addingToBundleTool}
+          bundles={catalog.bundles}
+          onClose={() => setAddingToBundleTool(null)}
+          onAddToExisting={async (bundle) => {
+            if (!bundle.toolIds.includes(addingToBundleTool.id)) {
+              await updateBundle(mode, bundle, {
+                toolIds: [...bundle.toolIds, addingToBundleTool.id],
+              });
+              await refreshCatalog();
+            }
+          }}
+          onCreateNew={() =>
+            setBundleModalState({
+              open: true,
+              editing: null,
+              preselectToolId: addingToBundleTool.id,
+            })
+          }
         />
       )}
 
